@@ -45,7 +45,11 @@ def run_inference(df: pd.DataFrame) -> pd.DataFrame:
     model = load_model()
 
     # Build features (no target during inference)
-    X = build_features(df, training=False)
+    X, _, _ = build_features(
+        df,
+        training=False,
+        artifacts=artifacts
+    )
 
     # Predict risk probability
     risk_prob = model.predict_proba(X)[:, 1]
