@@ -3,7 +3,29 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple, Optional
 
-from src.config import TARGET_COL
+from src.config import TARGET_COL, RISK_PERCENTILE_THRESHOLD
+
+# Expose feature lists for use in experiments
+AUDIO_FEATURES = [
+    "acousticness",
+    "danceability",
+    "energy",
+    "instrumentalness",
+    "liveness",
+    "loudness",
+    "speechiness",
+    "tempo",
+    "valence",
+    "duration_ms",
+]
+
+NORMALIZE_FEATURES = [
+    "danceability",
+    "energy",
+    "tempo",
+    "loudness",
+    "valence",
+]
 
 
 def build_features(
@@ -35,30 +57,57 @@ def build_features(
 
     df = df.copy()
 
+    # ------------------------
+    # Popularity percentile & target proxy
+    # ------------------------
+    # Compute popularity percentile within each genre (pop_pct_genre)
+    if "pop_pct_genre" not in df.columns:
+        df["pop_pct_genre"] = df.groupby("genre")["popularity"].rank(pct=True, method="average")
+
+    # low_performance is used elsewhere in features and leakage checks
+    df["low_performance"] = (df["pop_pct_genre"] <= RISK_PERCENTILE_THRESHOLD).astype(int)
+
+    # Derived target (proxy for skip risk)
+    df[TARGET_COL] = (df["pop_pct_genre"] <= RISK_PERCENTILE_THRESHOLD).astype(int)
+
+    # ------------------------
+    # Normalize categorical encodings
+    # ------------------------
+    # Convert textual 'mode' ('Major'/'Minor') to numeric 1/0
+    if "mode" in df.columns and df["mode"].dtype == object:
+        df["mode"] = df["mode"].map({"Major": 1, "Minor": 0})
+        if df["mode"].isnull().any():
+            # For any unexpected values, fall back to a binary flag where non-null -> 1
+            df["mode"] = df["mode"].fillna(0).astype(int)
+        else:
+            df["mode"] = df["mode"].astype(int)
+
     # =========================
     # Feature definitions
     # =========================
 
-    audio_features = [
-        "acousticness",
-        "danceability",
-        "energy",
-        "instrumentalness",
-        "liveness",
-        "loudness",
-        "speechiness",
-        "tempo",
-        "valence",
-        "duration_ms",
-    ]
+    # Use global feature lists defined at module-level so callers (train) can reuse them
+    audio_features = AUDIO_FEATURES
+    normalize_features = NORMALIZE_FEATURES
 
-    normalize_features = [
-        "danceability",
-        "energy",
-        "tempo",
-        "loudness",
-        "valence",
-    ]
+        # =========================
+    # Time signature (numeric)
+    # =========================
+
+    if "time_signature_num" not in df.columns:
+        if "time_signature" not in df.columns:
+            raise ValueError("Expected 'time_signature' column to derive time_signature_num")
+
+        df["time_signature_num"] = (
+            df["time_signature"]
+            .astype(str)
+            .str.split("/")
+            .str[0]
+            .astype(int)
+        )
+
+        df.drop(columns=["time_signature"], inplace=True)
+
 
     categorical_numeric = [
         "mode",
@@ -177,4 +226,11 @@ def build_features(
         }
         return X, y, artifacts
 
-    return X, None, None
+    # During inference / evaluation if the target column exists return it for scoring
+    if TARGET_COL in df.columns:
+        y = df[TARGET_COL]
+    else:
+        y = None
+
+    return X, y, None
+

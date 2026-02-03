@@ -36,7 +36,10 @@ RANDOM_STATE = 42
 # Modeling choices
 # =========================
 BASELINE_MODEL = "logistic_regression"
-PRIMARY_METRIC = "roc_auc"
+# Headline metric is Lift at top 5% (locked). Secondary metrics at 10% and 15%.
+PRIMARY_METRIC = "lift_at_5pct"
+HEADLINE_K = 0.05
+SECONDARY_KS = [0.10, 0.15]
 CRITICAL_CLASS = 1  # high-risk class
 # =========================
 # Ensure directories exist
