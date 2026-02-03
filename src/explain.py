@@ -7,7 +7,11 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import shap
+try:
+    import shap
+except ImportError:
+    shap = None
+
 
 from src.data_loader import load_raw_data
 from src.features import build_features
@@ -25,6 +29,11 @@ def select_explainer(model):
     actually called. This avoids instantiating SHAP explainers on toy/dummy
     objects used in unit tests.
     """
+    if shap is None:
+        raise ImportError(
+        "SHAP is not installed. Install it with `pip install shap` to run explanations."
+    )
+
     # Unwrap pipeline
     if hasattr(model, "named_steps"):
         m = model.named_steps.get("model", model)
