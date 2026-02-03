@@ -36,8 +36,25 @@ jobs:
 
     - name: Verify pytest installed
       run: |
+        set -x
         python -m pip show pytest || (python -m pip install -U pytest && python -m pip show pytest)
         python -m pip list
+        python -c "import importlib, sys; print('py executable:', sys.executable); print('pytest loader:', importlib.util.find_spec('pytest'))"
+        python -c "import pytest; print('pytest version:', pytest.__version__)" || true
+        python -m pytest -V || true
+
+    - name: Debug environment (if tests still fail)
+      if: failure()
+      run: |
+        set -x
+        echo "DEBUG: python and pip info"
+        python -V
+        python -c "import sys; print('executable:', sys.executable); print('sys.path:', sys.path)"
+        python -m pip --version
+        python -m pip list --format=columns
+        python -c "import importlib; print('import pytest:', importlib.util.find_spec('pytest'))" || true
+        ls -la
+        env | sort
 
     - name: Run tests
       run: |
