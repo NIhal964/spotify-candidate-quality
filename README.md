@@ -273,3 +273,17 @@ Outputs:
 - A personalized recommendation system
 - A user behavior model
 - An overfit benchmark exercise
+
+ ## Reproducibility & CI Note
+
+This project uses the publicly available Kaggle *Spotify Audio Features* dataset.
+The dataset is intentionally not committed to the repository to avoid bloating
+version control and to keep the project lightweight.
+
+Automated CI workflows are currently disabled because training and inference
+depend on local access to the dataset and deterministic experiment configuration.
+All results reported in this repository are fully reproducible via the provided
+command-line interface when the dataset is present locally (see Usage section).
+
+In a production environment, this would typically be handled via data versioning
+(DVC / feature stores) or mocked loaders for CI.
