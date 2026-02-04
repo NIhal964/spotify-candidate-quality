@@ -1,7 +1,5 @@
 # 🎧 Spotify Candidate Quality – Upstream Risk Prior for Music Recommendation
 
-[![CI](https://github.com/NIhal964/spotify-candidate-quality/actions/workflows/ci.yml/badge.svg)](https://github.com/NIhal964/spotify-candidate-quality/actions)
-
 **Elevator (TL;DR):** This project builds a non-personalized upstream risk prior that concentrates risky tracks for early filtering — **Lift@5% = 1.57× (LightGBM)**. Repro: see the `train` command in Usage (deterministic seed included).
 
 ## Business Problem
