@@ -1,4 +1,4 @@
-# src/features.py
+## src/features.py
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple, Optional
@@ -233,4 +233,3 @@ def build_features(
         y = None
 
     return X, y, None
-

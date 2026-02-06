@@ -1,5 +1,3 @@
-# src/train_common.py
-
 import logging
 from typing import Dict, Tuple, List, Optional
 

@@ -1,5 +1,3 @@
-# src/train.py
-
 import argparse
 import logging
 
