@@ -167,6 +167,17 @@ python -m src.train --model lightgbm --experiment full --save-model True
 Inference on new data
 python -m src.run_inference
 
+## Testing
+
+Core training, inference, evaluation, and explainability logic is covered by unit tests.
+Tests validate:
+- Feature construction and leakage-safe splits
+- Training CLI behavior and artifact persistence
+- Inference-time feature alignment
+- Optional explainability (SHAP) behavior
+
+Tests are designed to run without requiring raw data downloads.
+
 
 Artifacts (trained model and feature metadata) are persisted to ensure consistent inference and explainability.
 
@@ -191,13 +202,22 @@ spotify-candidate-quality/
 │   ├── inference.py
 │   ├── explain.py
 │   └── features.py
+├── tests/
+│   ├── test_train_common.py
+│   ├── test_train_cli.py
+│   ├── test_train_artifacts.py
+│   ├── test_inference.py
+│   ├── test_explain.py
+│   └── test_evaluate.py
 ├── notebooks/
 │   ├── 01_eda.ipynb
 │   └── 02_feature_engineering.ipynb
 ├── data/
-│   ├── raw/
+│   ├── raw/              # local only (ignored)
 │   └── processed/
-├── models/
-├── logs/
+├── models/               # saved artifacts (optional, ignored)
+├── assets/               # curated plots for README / portfolio
+├── .gitignore
 └── README.md
+
 
