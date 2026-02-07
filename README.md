@@ -1,134 +1,203 @@
-# Content-Based Candidate Quality Estimation for Music Recommendation Systems
+# Spotify Candidate Quality Estimation
 
-## Overview
+Content-Based Candidate Quality Estimation for Music Recommendations
 
-This project builds a content-based risk scoring model for music recommendation systems.
+---
 
-Rather than predicting engagement directly, the model estimates the probability that a track will underperform (high skip risk) when surfaced to users. The output is a continuous risk score designed to support candidate filtering, gating, and ranking before personalization signals are available.
+## Problem Context
 
-This mirrors how large-scale recommender systems manage exploration risk during early exposure.
+Music recommendation systems must balance **exploration** (surfacing new or less-known tracks) with **user experience**.
+Poor-quality or context-misaligned tracks surfaced too early can increase skips and negatively impact downstream personalization.
 
-## Business Problem
+In early stages of a track’s lifecycle, **behavioral signals are sparse or unavailable**, making it difficult to assess
+whether a track should be safely exposed or cautiously handled.
 
-Music recommendation systems must balance discovery with user experience.
+This project builds a **content-based ML system** to estimate *relative skip risk* for tracks **before sufficient user interaction data exists**, enabling safer exploration decisions.
 
-Surfacing low-quality or mismatched tracks early in a session can increase skip rates, reduce session length, and bias downstream personalization models.
-
-The system therefore needs a way to identify risky candidates early, using only content-level information.
+---
 
 ## Decision Framing
 
-Who uses this model?  
-The recommendation system itself (not end users).
+**User of the model:**  
+Recommendation system (not end users)
 
-What decision does it support?  
-Which candidate tracks should be deprioritized during exploration and how aggressively a track should be exposed under limited recommendation slots.
+**Decision supported:**  
+Which tracks should be deprioritized or cautiously exposed during early-stage recommendation?
 
-What does the model output?  
-A risk probability (risk_probability ∈ [0,1]). Higher values indicate higher likelihood of underperformance. The score is intentionally rankable, not a hard label.
+**Model output:**  
+A **continuous risk probability score** (0–1), used as a *risk prior* rather than a hard decision.
 
-## Target Definition (Proxy)
+The model is intentionally **conservative** and designed to support **candidate filtering and routing**, not final ranking.
 
-True skip outcomes are not available, so a proxy target is constructed:
+---
 
-high_skip_risk_proxy = 1 if track popularity percentile within its genre ≤ 25%
+## Data & Target Construction
 
-Why this proxy?
+- Dataset: Public Spotify audio features dataset
+- Granularity: Track-level
+- No user interaction logs available
 
-It is genre-aware, avoids cross-genre popularity bias, is stable over time, and aligns with business intuition that tracks consistently underperforming relative to peers are riskier to surface.
+### Target Definition (Proxy)
+A **genre-relative popularity percentile** is used as a proxy for historical underperformance:
+high_skip_risk_proxy = 1 if popularity percentile within genre ≤ 25%
 
-The model estimates historical, context-relative risk rather than absolute song quality.
+Why this proxy:
+- Controls for genre-specific popularity distributions
+- Reduces exposure bias compared to global popularity
+- Produces a stable, interpretable relative risk signal
 
-## Data
-
-Source: Public Spotify audio features dataset (Kaggle)
-
-Granularity: Track-level
-
-Key fields include audio features (energy, loudness, danceability, etc.), genre, artist, and popularity (used only for target construction).
+---
 
 ## Feature Engineering
 
-Features are designed to capture both intrinsic track properties and contextual deviation signals.
+Features are designed to be **available at inference time** and safe for cold-start scenarios.
 
-Raw audio features represent absolute musical characteristics such as energy, loudness, danceability, tempo, valence, and instrumentalness. These are especially important for cold-start scenarios.
+### Feature groups:
+- **Raw audio features:** acousticness, energy, loudness, tempo, etc.
+- **Genre-normalized z-scores:** deviation from genre norms
+- **Artist-level priors:** mean audio characteristics (audio-only, leakage-safe)
+- **Categorical encodings:** genre one-hot, cyclic encoding for musical key
 
-Genre-normalized features are computed as within-genre z-scores for selected audio features including loudness, energy, danceability, tempo, and speechiness. These capture how tracks deviate from genre norms.
+All feature choices were evaluated through controlled ablation experiments.
 
-Artist-level priors are computed as artist-level averages of audio features using training data only. These provide prior context without leaking outcome information.
-
-Categorical encodings include one-hot encoding for genre and cyclic encoding for musical key.
-
-All feature transformations are persisted as training artifacts and reused at inference time to ensure feature parity.
+---
 
 ## Modeling Approach
 
-A regularized logistic regression model is used as a transparent baseline.
+### Baseline
+- Regularized Logistic Regression (interpretable, calibration-friendly)
 
-A non-linear LightGBM model is trained to capture feature interactions, improve recall under low exposure budgets, and better align with ranking-based evaluation metrics.
+### Non-linear model
+- LightGBM (to capture feature interactions and non-linear effects)
 
-## Evaluation Strategy
+### Validation strategy
+- **Artist-disjoint train/test split** to prevent artist-level leakage
+- Evaluation framed as a **ranking / filtering task**, not pure classification
 
-Traditional metrics such as accuracy or ROC-AUC are insufficient for this problem.
+---
 
-The primary metric is Lift@K, which measures how much better the model is at identifying risky tracks within the top K percent of candidates compared to random selection. This directly reflects how recommendation systems operate under exposure constraints.
+## Results & Insights
 
-Results summary:
+### Evaluation Setup
 
-Experiment A (raw audio features): Lift@5% = 1.12x  
-Experiment B (audio + genre-normalized features): Lift@5% = 1.20x  
-Experiment C (full feature set): Lift@5% = 1.57x  
+Performance is evaluated using **Recall@K** and **Lift@K**, reflecting how the system would behave when selecting a small
+subset of high-risk tracks for cautious handling.
 
-The full model surfaces 57 percent more high-risk tracks in the top 5 percent than random selection.
+This aligns with real recommender-system decision constraints rather than optimizing accuracy alone.
 
-## Interpretability (SHAP)
+---
 
-SHAP is used to explain why the model flags tracks as risky.
+### Model Performance
 
-Key observations include genre-relative loudness and energy being stronger predictors than raw values, consistent risk signals from tracks deviating negatively from genre norms, and marginal contribution from artist-level priors.
+**Headline metric (business-aligned):**
+- **Lift@5%: 1.57×**
 
-Artifacts generated include global feature importance tables, per-sample explanations, and SHAP summary plots saved to the logs directory.
+This means the top 5% highest-risk tracks identified by the model contain **57% more truly risky tracks** than random selection.
 
-## Inference and Scoring
+**Secondary metrics:**
+- Lift@10%: 1.43×
+- Lift@15%: 1.35×
 
-At inference time, no target labels are available. Raw track metadata is transformed using persisted training artifacts and the model outputs a risk probability score.
+The model is effective as a **risk prior** for early-stage filtering.
 
-Example output columns:
+---
 
-track_id  
-genre  
-risk_probability  
+### Ablation Study (Feature Contribution)
 
-These scores are intended to be ranked, thresholded, or combined with downstream personalization or business rules.
+A controlled A/B/C experiment quantifies the impact of feature engineering:
 
-## Usage
+| Experiment | Features Used | Lift@5% |
+|----------|--------------|---------|
+| A | Raw audio features | 1.12× |
+| B | Audio + genre-normalized features | 1.20× |
+| C | Full model (audio + genre z-scores + artist priors) | **1.57×** |
 
-Training and experiments:
+**Key takeaway:**  
+Context-aware features (genre-relative deviations and artist priors) substantially improve risk separation compared to raw audio alone.
 
+---
+
+### Explainability (SHAP)
+
+SHAP was applied to the trained LightGBM model to validate feature behavior and interpret risk drivers.
+
+Key observations:
+- Genre-relative loudness, energy, and danceability are strong contributors
+- Absolute audio features behave differently depending on genre context
+- Artist priors act as stabilizing signals rather than dominant predictors
+
+This confirms the model learns **context-aware risk patterns**, not popularity memorization.
+
+---
+
+### Example Scored Outputs
+
+The inference pipeline produces a **risk probability score** for each track:
+
+| track_id | genre | risk_probability |
+|--------|-------|------------------|
+| 0ST6uPfvaPpJLtQwhE6KfC | Movie | 0.77 |
+| 0IuslXpMROHdEPvSl1fTQK | Movie | 0.30 |
+| 0BRjO6ga9RKCKjfDqeFgWV | Movie | 0.19 |
+
+These scores are intended for **downstream decision-making**, not standalone judgments.
+
+---
+
+## Limitations & Production Considerations
+
+This model estimates **historical, context-relative risk** and is intentionally conservative.
+
+Edge cases handled outside this model in a full production system include:
+- Cold-start tracks with limited exposure
+- Genre misclassification or context mismatch
+- Viral or promotional popularity spikes
+- Temporal shifts in listener preferences
+
+In practice, model outputs would be treated as **weak priors**, combined with exploration logic and real-time feedback.
+
+---
+
+## Reproducibility & Usage
+
+### Training and experiments
+```bash
 python -m src.train --model lightgbm --experiment full --save-model True
-
-This runs feature ablation experiments, logs Lift@K metrics, and saves the trained model and artifacts.
-
-Inference:
-
+```
+Inference on new data
 python -m src.run_inference
 
-This scores tracks and saves results to data/processed/scored_tracks.csv.
 
-Model explainability:
+Artifacts (trained model and feature metadata) are persisted to ensure consistent inference and explainability.
 
-python -m src.explain --model-file models/model_lgbm.pkl
+Engineering Notes
 
-## Limitations and Future Work
+CLI-driven experimentation
 
-The target is a proxy and not true skip behavior. The model does not include user-level or session-level context and is designed for candidate risk estimation rather than final ranking.
+Modular training and inference pipelines
 
-Future extensions include incorporating session context, exploration-aware thresholding, and online A/B testing simulation.
+Leakage-aware feature design
 
-## Why This Project Matters
+Explainability integrated via SHAP
 
-This project focuses on decision support rather than pure prediction.
+LLMs used as a development accelerator for feature ideation and experiment setup, with outputs validated through tests, metrics, and data checks
 
-It demonstrates business-aligned problem framing, feature design under real-world constraints, ranking-aware evaluation, reproducible training and inference, and model interpretability.
+## Repo srtucture
+spotify-candidate-quality/
+├── src/
+│   ├── train.py
+│   ├── train_lgbm.py
+│   ├── train_logistic.py
+│   ├── inference.py
+│   ├── explain.py
+│   └── features.py
+├── notebooks/
+│   ├── 01_eda.ipynb
+│   └── 02_feature_engineering.ipynb
+├── data/
+│   ├── raw/
+│   └── processed/
+├── models/
+├── logs/
+└── README.md
 
-The system is intentionally conservative and designed to integrate cleanly into a larger recommendation pipeline.
